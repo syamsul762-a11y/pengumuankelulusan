@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Student } from '@/types';
 import confetti from 'canvas-confetti';
 import { motion } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
+import { cn } from '@/lib/utils';
 
 interface ResultCardProps {
   student: Student;
@@ -144,8 +145,4 @@ export default function ResultCard({ student, onDownload, onPrint }: ResultCardP
       </p>
     </motion.div>
   );
-}
-
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(' ');
 }
