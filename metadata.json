@@ -1,0 +1,6 @@
+{
+  "name": "SIKS - Sistem Informasi Kelulusan Sekolah",
+  "description": "Aplikasi pengumuman kelulusan sekolah modern dengan fitur cek NISN, cetak SKL PDF, dan dashboard admin.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

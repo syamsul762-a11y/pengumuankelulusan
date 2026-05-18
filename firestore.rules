@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    
+    function isAdmin() {
+      // Hardcoded admin email from runtime context
+      return isEmailVerified() && request.auth.token.email == "syamsul762@guru.sd.belajar.id";
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Students Collection
+    // -------------------------------------------------------------------------
+    match /students/{nisn} {
+      function isValidStudent(data) {
+        return data.keys().hasAll(['nisn', 'name', 'class', 'status'])
+            && data.nisn is string && data.nisn.size() >= 5 && data.nisn.size() <= 20
+            && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+            && data.class is string && data.class.size() > 0 && data.class.size() <= 50
+            && data.status in ['LULUS', 'TIDAK LULUS']
+            && (!('averageScore' in data) || data.averageScore is number)
+            && (!('message' in data) || data.message is string && data.message.size() <= 1000)
+            && (!('birthInfo' in data) || data.birthInfo is string && data.birthInfo.size() <= 200)
+            && (!('createdAt' in data) || data.createdAt is timestamp)
+            && (!('updatedAt' in data) || data.updatedAt is timestamp);
+      }
+
+      // Security Guard: Anyone can fetch their own result if they know the NISN (doc ID)
+      // This is a "lookup" but not a "list" (search/query)
+      allow get: if isValidId(nisn);
+      
+      // Admin Operations
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidStudent(incoming());
+      allow update: if isAdmin() && isValidStudent(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Settings Collection
+    // -------------------------------------------------------------------------
+    match /settings/{settingId} {
+      function isValidSettings(data) {
+        return data.keys().hasAll(['schoolName', 'announcementDate', 'isLive', 'principalName', 'principalNip'])
+            && data.schoolName is string && data.schoolName.size() <= 200
+            && data.announcementDate is string
+            && data.isLive is bool
+            && data.principalName is string && data.principalName.size() <= 200
+            && data.principalNip is string && data.principalNip.size() <= 50;
+      }
+
+      allow read: if true;
+      allow write: if isAdmin() && isValidSettings(incoming());
+    }
+  }
+}

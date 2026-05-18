@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "student": {
+      "title": "Student",
+      "description": "Data kelulusan siswa",
+      "type": "object",
+      "properties": {
+        "nisn": { "type": "string", "description": "Nomor Induk Siswa Nasional" },
+        "name": { "type": "string", "description": "Nama Lengkap" },
+        "class": { "type": "string", "description": "Kelas" },
+        "birthInfo": { "type": "string", "description": "Tempat Tanggal Lahir" },
+        "status": { "type": "string", "enum": ["LULUS", "TIDAK LULUS"], "description": "Status kelulusan" },
+        "averageScore": { "type": "number", "description": "Nilai rata-rata" },
+        "message": { "type": "string", "description": "Pesan kelulusan" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nisn", "name", "class", "status"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Pengaturan aplikasi",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string" },
+        "announcementDate": { "type": "string", "format": "date-time" },
+        "isLive": { "type": "boolean" },
+        "logoUrl": { "type": "string" },
+        "principalName": { "type": "string" },
+        "principalNip": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "students": {
+      "schema": "student",
+      "description": "Koleksi data siswa"
+    },
+    "settings": {
+      "schema": "settings",
+      "description": "Pengaturan sistem"
+    }
+  }
+}
