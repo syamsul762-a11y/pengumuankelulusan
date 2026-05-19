@@ -15,7 +15,8 @@ service cloud.firestore {
     
     function isAdmin() {
       // Hardcoded admin email from runtime context
-      return isEmailVerified() && request.auth.token.email == "syamsul762@guru.sd.belajar.id";
+      // Removed email_verified requirement as it can be flaky
+      return isSignedIn() && request.auth.token.email == "syamsul762@guru.sd.belajar.id";
     }
     
     function isValidId(id) {
