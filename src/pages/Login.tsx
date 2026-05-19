@@ -27,7 +27,10 @@ export default function Login() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user && (user.email === "syamsul762@guru.sd.belajar.id" || user.email === "admin@siks.com")) {
-        navigate('/admin/dashboard');
+        // Only auto-redirect if we have the access token needed for Sheets
+        if (getAccessToken()) {
+          navigate('/admin/dashboard');
+        }
       }
     });
     return () => unsubscribe();

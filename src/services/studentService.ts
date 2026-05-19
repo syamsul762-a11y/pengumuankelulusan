@@ -4,7 +4,7 @@ import { googleSheetsService } from './googleSheetsService';
 export const studentService = {
   async getByNisn(nisn: string): Promise<Student | null> {
     try {
-      let values = await googleSheetsService.getValues('Students!A2:H');
+      let values = await googleSheetsService.getValues('Students!A2:K');
       
       // Fallback for public access if no token
       if (!values) {
@@ -33,7 +33,7 @@ export const studentService = {
 
   async getAll(): Promise<Student[]> {
     try {
-      let values = await googleSheetsService.getValues('Students!A2:H');
+      let values = await googleSheetsService.getValues('Students!A2:K');
       
       // Fallback for public
       if (!values) {
@@ -67,7 +67,7 @@ export const studentService = {
         student.class,
         student.birthInfo || '',
         student.status,
-        student.averageScore || '',
+        student.averageScore !== undefined && student.averageScore !== null ? student.averageScore : '',
         student.message || '',
         student.keterangan || '',
         student.bantuanProgram || '',
@@ -117,7 +117,7 @@ export const studentService = {
       student.class,
       student.birthInfo || '',
       student.status,
-      student.averageScore || '',
+      student.averageScore !== undefined && student.averageScore !== null ? student.averageScore : '',
       student.message || '',
       student.keterangan || '',
       student.bantuanProgram || '',

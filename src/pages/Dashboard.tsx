@@ -124,7 +124,10 @@ export default function Dashboard() {
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStudent.nisn || !newStudent.name) return;
+    if (!newStudent.nisn || !newStudent.name) {
+      toast.error('NISN dan Nama wajib diisi');
+      return;
+    }
     
     setIsActionLoading(true);
     try {
@@ -133,9 +136,35 @@ export default function Dashboard() {
       setStudents(updatedStudents);
       setIsAddOpen(false);
       setNewStudent({ status: 'LULUS' });
-      toast.success('Data siswa berhasil disimpan');
-    } catch (error) {
-      toast.error('Gagal menyimpan data');
+      toast.success('Data siswa berhasil disimpan ke Spreadsheet');
+    } catch (error: any) {
+      console.error(error);
+      toast.error('Gagal menyimpan data: ' + (error.message || 'Error tidak diketahui'));
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleSetupSpreadsheet = async () => {
+    setIsActionLoading(true);
+    try {
+      toast.info('Sedang membuat Spreadsheet baru...');
+      const id = await googleSheetsService.createSpreadsheet();
+      if (id) {
+        setSpreadsheetId(id);
+        toast.success('Spreadsheet berhasil dibuat dan dikoneksikan');
+        // Reload data
+        const [fetchedStudents, fetchedSettings] = await Promise.all([
+          studentService.getAll(),
+          settingsService.getSettings()
+        ]);
+        setStudents(fetchedStudents);
+        if (fetchedSettings) setSettings(fetchedSettings);
+      } else {
+        throw new Error('Gagal membuat spreadsheet');
+      }
+    } catch (error: any) {
+      toast.error('Gagal menyiapkan spreadsheet: ' + error.message);
     } finally {
       setIsActionLoading(false);
     }
@@ -223,8 +252,8 @@ export default function Dashboard() {
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 200000) {
-        toast.error('File terlalu besar. Maksimal 200KB.');
+      if (file.size > 40000) {
+        toast.error('Logo terlalu besar. Maksimal 40KB agar bisa tersimpan di Spreadsheet.');
         return;
       }
       const reader = new FileReader();
@@ -324,7 +353,7 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-xs font-mono truncate max-w-full text-primary" title={spreadsheetId || 'Not set'}>
+            <div className="text-xs font-mono truncate max-w-full text-primary min-h-[40px] flex items-center" title={spreadsheetId || 'Not set'}>
               {spreadsheetId ? (
                 <a 
                   href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}`} 
@@ -335,9 +364,17 @@ export default function Dashboard() {
                   Buka Google Sheet <Edit className="h-3 w-3" />
                 </a>
               ) : (
-                'Disconnected'
+                <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={handleSetupSpreadsheet} disabled={isActionLoading}>
+                  {isActionLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
+                  Hubungkan Sheets
+                </Button>
               )}
             </div>
+            {spreadsheetId && (
+              <p className="text-[9px] text-muted-foreground mt-1">
+                * Pastikan Sheet memiliki akses "Siapa saja dengan link dapat melihat" untuk publik.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
