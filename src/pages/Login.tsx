@@ -51,11 +51,20 @@ export default function Login() {
 
           // Check/Create spreadsheet
           try {
-            const id = await googleSheetsService.getSpreadsheetId();
+            toast.info('Menghubungkan ke Spreadsheet...', { duration: 3000 });
+            let id = await googleSheetsService.getSpreadsheetId();
+            
             if (!id) {
-              toast.info('Menyiapkan Spreadsheet penyimpanan...', { duration: 5000 });
+              toast.info('Mencari data di Drive...');
+              id = await googleSheetsService.syncWithCloud();
+            }
+
+            if (!id) {
+              toast.info('Menyiapkan Spreadsheet baru...', { duration: 5000 });
               await googleSheetsService.createSpreadsheet();
-              toast.success('Spreadsheet berhasil disiapkan!');
+              toast.success('Spreadsheet berhasil dibuat!');
+            } else {
+              toast.success('Terhubung ke Spreadsheet lama.');
             }
           } catch (sheetErr: any) {
             console.error("Spreadsheet error:", sheetErr);

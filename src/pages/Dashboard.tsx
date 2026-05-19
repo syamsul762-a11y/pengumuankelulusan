@@ -145,6 +145,29 @@ export default function Dashboard() {
     }
   };
 
+  const handleSyncSpreadsheet = async () => {
+    setIsActionLoading(true);
+    try {
+      const id = await googleSheetsService.syncWithCloud();
+      if (id) {
+        setSpreadsheetId(id);
+        toast.success(`Berhasil terhubung ke Spreadsheet: ${id}`);
+        const [fetchedStudents, fetchedSettings] = await Promise.all([
+          studentService.getAll(),
+          settingsService.getSettings()
+        ]);
+        setStudents(fetchedStudents);
+        if (fetchedSettings) setSettings(fetchedSettings);
+      } else {
+        toast.error('Spreadsheet tidak ditemukan di Google Drive anda.');
+      }
+    } catch (error: any) {
+      toast.error('Gagal sinkronisasi: ' + error.message);
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
   const handleSetupSpreadsheet = async () => {
     setIsActionLoading(true);
     try {
@@ -364,10 +387,16 @@ export default function Dashboard() {
                   Buka Google Sheet <Edit className="h-3 w-3" />
                 </a>
               ) : (
-                <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={handleSetupSpreadsheet} disabled={isActionLoading}>
-                  {isActionLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
-                  Hubungkan Sheets
-                </Button>
+                <div className="flex flex-col gap-1 w-full">
+                  <Button variant="outline" size="sm" className="h-8 text-[10px] w-full" onClick={handleSyncSpreadsheet} disabled={isActionLoading}>
+                    {isActionLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
+                    Cari Spreadsheet
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 text-[10px] w-full" onClick={handleSetupSpreadsheet} disabled={isActionLoading}>
+                    {isActionLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
+                    Buat Baru
+                  </Button>
+                </div>
               )}
             </div>
             {spreadsheetId && (

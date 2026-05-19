@@ -57,6 +57,31 @@ export const googleSheetsService = {
     return null;
   },
 
+  async syncWithCloud(): Promise<string | null> {
+    const token = getAccessToken();
+    if (!token) throw new Error('Token Google tidak ditemukan. Silakan login ulang.');
+
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name='${SPREADSHEET_NAME}' and trashed=false&fields=files(id)`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      const data = await response.json();
+      if (data.files && data.files.length > 0) {
+        const id = data.files[0].id;
+        localStorage.setItem('siks_spreadsheet_id', id);
+        await setDoc(doc(db, 'config', 'public'), { spreadsheetId: id }, { merge: true });
+        return id;
+      }
+    } catch (error) {
+      console.error('Error syncing:', error);
+      throw error;
+    }
+    return null;
+  },
+
   async createSpreadsheet(): Promise<string | null> {
     const token = getAccessToken();
     if (!token) return null;
