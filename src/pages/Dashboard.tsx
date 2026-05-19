@@ -13,7 +13,10 @@ import {
   AlertCircle,
   CheckCircle2,
   Download,
-  Loader2
+  Loader2,
+  FileSpreadsheet,
+  Image as ImageIcon,
+  Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +45,10 @@ import Papa from 'papaparse';
 import { studentService } from '@/services/studentService';
 import { settingsService } from '@/services/settingsService';
 import { auth } from '@/lib/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
+import { initAuth, logout, getAccessToken } from '@/lib/googleAuth';
+import { googleSheetsService } from '@/services/googleSheetsService';
+import { Countdown } from '@/components/Countdown';
 import { toast } from 'sonner';
 
 export default function Dashboard() {
@@ -55,6 +61,7 @@ export default function Dashboard() {
     principalName: 'Drs. H. Mulyadi, M.Pd.',
     principalNip: '197205121998031002'
   });
+  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,31 +70,52 @@ export default function Dashboard() {
 
   // Auth check and initial data fetch
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user || (user.email !== "syamsul762@guru.sd.belajar.id" && user.email !== "admin@siks.com")) {
-        navigate('/login');
-        return;
+    // We use initAuth to handle token persistence in-memory
+    const unsubscribe = initAuth(
+      async (user, token) => {
+        if (user.email !== "syamsul762@guru.sd.belajar.id" && user.email !== "admin@siks.com") {
+          navigate('/login');
+          return;
+        }
+
+        try {
+          const id = await googleSheetsService.getSpreadsheetId();
+          setSpreadsheetId(id);
+
+          const [fetchedStudents, fetchedSettings] = await Promise.all([
+            studentService.getAll(),
+            settingsService.getSettings()
+          ]);
+          setStudents(fetchedStudents);
+          if (fetchedSettings) setSettings(fetchedSettings);
+        } catch (error) {
+          console.error(error);
+          toast.error('Gagal mengambil data dari Spreadsheet');
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      () => {
+        // If auth fails or no token, double check with firebase auth
+        onAuthStateChanged(auth, (user) => {
+          if (!user) {
+            navigate('/login');
+          } else if (!getAccessToken()) {
+            // User is logged in but we lost the access token (refresh)
+            // Redirect to login to re-auth with Google scopes
+            toast.info('Sesi Google Sheets kedaluwarsa, silakan login kembali.');
+            navigate('/login');
+          }
+        });
       }
-      
-      try {
-        const [fetchedStudents, fetchedSettings] = await Promise.all([
-          studentService.getAll(),
-          settingsService.getSettings()
-        ]);
-        setStudents(fetchedStudents);
-        if (fetchedSettings) setSettings(fetchedSettings);
-      } catch (error) {
-        toast.error('Gagal mengambil data');
-      } finally {
-        setIsLoading(false);
-      }
-    });
+    );
+
     return () => unsubscribe();
   }, [navigate]);
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await logout();
       navigate('/login');
     } catch (error) {
       toast.error('Gagal logout');
@@ -176,9 +204,9 @@ export default function Dashboard() {
 
   const downloadCsvTemplate = () => {
     const csvData = [
-      ['NISN', 'Nama', 'Kelas', 'TTL', 'Status', 'Nilai', 'Pesan'],
-      ['1234567890', 'Ahmad Jauhari', 'XII IPA 1', 'Jakarta, 12-05-2008', 'LULUS', '92.5', 'Selamat!'],
-      ['0987654321', 'Siti Aminah', 'XII IPS 2', 'Bandung, 01-06-2008', 'TIDAK LULUS', '75.0', 'Tingkatkan belajar.']
+      ['NISN', 'Nama', 'Kelas', 'TTL', 'Status', 'Nilai', 'Pesan', 'Keterangan', 'Bantuan', 'Link'],
+      ['1234567890', 'Ahmad Jauhari', 'XII IPA 1', 'Jakarta, 12-05-2008', 'LULUS', '92.5', 'Selamat!', 'Penerima KIP', 'PIP', 'https://berkas.com/123'],
+      ['0987654321', 'Siti Aminah', 'XII IPS 2', 'Bandung, 01-06-2008', 'TIDAK LULUS', '75.0', 'Tingkatkan belajar.', '-', '-', '-']
     ];
     const csvContent = csvData.map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -190,6 +218,22 @@ export default function Dashboard() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 200000) {
+        toast.error('File terlalu besar. Maksimal 200KB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSettings({ ...settings, logoUrl: reader.result as string });
+        toast.success('Logo berhasil dipilih. Klik Simpan untuk memperbarui.');
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const filteredStudents = students.filter(s => 
@@ -226,6 +270,19 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <Card className="md:col-span-4 overflow-hidden border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2 text-center">
+            <CardTitle className="text-sm font-medium text-primary uppercase flex items-center justify-center gap-2">
+              <Clock className="h-4 w-4" /> Hitung Mundur Pengumuman
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Countdown date={settings.announcementDate} />
+            <p className="text-center text-xs text-muted-foreground">
+              Target: {new Date(settings.announcementDate).toLocaleString('id-ID')}
+            </p>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase flex items-center gap-2">
@@ -263,13 +320,24 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase flex items-center gap-2">
-              <Settings className="h-4 w-4" /> Status Sistem
+              <FileSpreadsheet className="h-4 w-4" /> Penyimpanan
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge variant={settings.isLive ? "success" : "destructive"}>
-              {settings.isLive ? 'LIVE / ONLINE' : 'HIDDEN / OFFLINE'}
-            </Badge>
+            <div className="text-xs font-mono truncate max-w-full text-primary" title={spreadsheetId || 'Not set'}>
+              {spreadsheetId ? (
+                <a 
+                  href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="hover:underline flex items-center gap-1"
+                >
+                  Buka Google Sheet <Edit className="h-3 w-3" />
+                </a>
+              ) : (
+                'Disconnected'
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -379,6 +447,30 @@ export default function Dashboard() {
                             placeholder="Contoh: 85.50"
                             value={newStudent.averageScore || ''}
                             onChange={e => setNewStudent({...newStudent, averageScore: parseFloat(e.target.value)})}
+                          />
+                       </div>
+                       <div className="space-y-2">
+                         <Label>Program Bantuan</Label>
+                         <Input 
+                            placeholder="Contoh: PIP / KIP"
+                            value={newStudent.bantuanProgram || ''}
+                            onChange={e => setNewStudent({...newStudent, bantuanProgram: e.target.value})}
+                          />
+                       </div>
+                       <div className="space-y-2">
+                         <Label>Link/Folder Berkas</Label>
+                         <Input 
+                            placeholder="URL Google Drive"
+                            value={newStudent.linkBerkas || ''}
+                            onChange={e => setNewStudent({...newStudent, linkBerkas: e.target.value})}
+                          />
+                       </div>
+                       <div className="space-y-2 md:col-span-2">
+                         <Label>Keterangan Tambahan</Label>
+                         <Input 
+                            placeholder="Contoh: Siswa Berprestasi"
+                            value={newStudent.keterangan || ''}
+                            onChange={e => setNewStudent({...newStudent, keterangan: e.target.value})}
                           />
                        </div>
                     </div>
@@ -497,6 +589,27 @@ export default function Dashboard() {
                       value={settings.principalNip}
                       onChange={e => setSettings({...settings, principalNip: e.target.value})}
                     />
+                  </div>
+                  <div className="space-y-2">
+                     <Label>Logo Sekolah</Label>
+                     <div className="flex items-center gap-4">
+                        {settings.logoUrl ? (
+                          <img src={settings.logoUrl} alt="Logo" className="h-16 w-16 object-contain border rounded p-1 bg-white" />
+                        ) : (
+                          <div className="h-16 w-16 border rounded flex items-center justify-center bg-muted">
+                            <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <Input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleLogoUpload}
+                            className="cursor-pointer"
+                          />
+                          <p className="text-[10px] text-muted-foreground mt-1">Gunakan gambar persegi (PNG/JPG, max 200KB)</p>
+                        </div>
+                     </div>
                   </div>
                </div>
                <div className="flex items-center gap-2">

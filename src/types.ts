@@ -7,6 +7,9 @@ export interface Student {
   status: 'LULUS' | 'TIDAK LULUS';
   averageScore?: number;
   message?: string;
+  keterangan?: string;
+  bantuanProgram?: string;
+  linkBerkas?: string;
   createdAt?: any;
   updatedAt?: any;
 }

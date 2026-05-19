@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, LogIn, Loader2, AlertCircle, User, Lock } from 'lucide-react';
+import { GraduationCap, LogIn, Loader2, AlertCircle, User, Lock, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,13 +9,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion } from 'motion/react';
 import { auth } from '@/lib/firebase';
 import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
+import { googleSignIn, getAccessToken } from '@/lib/googleAuth';
 import { toast } from 'sonner';
+import { googleSheetsService } from '@/services/googleSheetsService';
 
 export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
@@ -37,22 +37,43 @@ export default function Login() {
     setIsLoading(true);
     setError(null);
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      
-      if (user.email === "syamsul762@guru.sd.belajar.id" || user.email === "admin@siks.com") {
-        toast.success('Login Berhasil', {
-          description: `Selamat datang, ${user.displayName || 'Admin'}`
-        });
-        navigate('/admin/dashboard');
-      } else {
-        await auth.signOut();
-        setError('Akses Ditolak. Email Anda tidak terdaftar sebagai administrator.');
+      const result = await googleSignIn();
+      if (result) {
+        const user = result.user;
+        
+        if (user.email === "syamsul762@guru.sd.belajar.id" || user.email === "admin@siks.com") {
+          toast.success('Login Berhasil', {
+            description: `Selamat datang, ${user.displayName || 'Admin'}`
+          });
+
+          // Check/Create spreadsheet
+          try {
+            const id = await googleSheetsService.getSpreadsheetId();
+            if (!id) {
+              toast.info('Menyiapkan Spreadsheet penyimpanan...', { duration: 5000 });
+              await googleSheetsService.createSpreadsheet();
+              toast.success('Spreadsheet berhasil disiapkan!');
+            }
+          } catch (sheetErr: any) {
+            console.error("Spreadsheet error:", sheetErr);
+            toast.warning('Peringatan: Gagal memverifikasi Spreadsheet.', {
+              description: 'Pastikan anda telah memberikan izin Drive/Sheets.'
+            });
+          }
+
+          navigate('/admin/dashboard');
+        } else {
+          await auth.signOut();
+          setError('Akses Ditolak. Email ini tidak terdaftar sebagai administrator.');
+          toast.error('Akses Ditolak');
+        }
       }
     } catch (err: any) {
-      console.error(err);
-      setError('Gagal login. Pastikan koneksi internet stabil.');
+      console.error("Google Auth error:", err);
+      setError(err.message || 'Gagal login dengan Google.');
+      toast.error('Login Gagal', {
+        description: err.message
+      });
     } finally {
       setIsLoading(false);
     }
@@ -63,40 +84,61 @@ export default function Login() {
     setIsLoading(true);
     setError(null);
 
+    const adminEmail = 'admin@siks.com';
+    const adminPass = 'admin123';
+
     if (username === 'admin' && password === 'admin123') {
-      const adminEmail = 'admin@siks.com';
-      const adminPass = 'admin123';
-      
       try {
-        // Try sign in
         await signInWithEmailAndPassword(auth, adminEmail, adminPass);
-        toast.success('Login Berhasil', {
-          description: 'Selamat datang, Administrator'
-        });
-        navigate('/admin/dashboard');
-      } catch (err: any) {
-        console.log("Manual auth error:", err.code);
-        // If user not found, try to create it (simple auto-provisioning for this use case)
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-           try {
-             await createUserWithEmailAndPassword(auth, adminEmail, adminPass);
-             toast.success('Account Created & Logged In', {
-               description: 'Akun administrator baru telah dibuat.'
-             });
-             navigate('/admin/dashboard');
-           } catch (createErr: any) {
-             console.error(createErr);
-             setError('Gagal membuat akun admin atau password salah.');
-           }
+        
+        // CHECK TOKEN - Manual login doesn't provide Google Access Token
+        if (!getAccessToken()) {
+           toast.warning('Login Berhasil, tapi butuh Izin Spreadsheet', {
+             description: 'Klik "Google Account" untuk mengaktifkan sinkronisasi Spreadsheet.',
+             duration: 6000
+           });
+           // Switch to google tab automatically or just wait
         } else {
-           setError('Gagal login manual. Periksa koneksi atau kredensial.');
+           toast.success('Login Berhasil');
+           navigate('/admin/dashboard');
+        }
+      } catch (err: any) {
+        // ... previous error handling ...
+        console.log("Login error code:", err.code);
+        
+        // If user doesn't exist or other error, try to create it automatically
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-email') {
+          try {
+            console.log("User not found or invalid, attempting to create...");
+            await createUserWithEmailAndPassword(auth, adminEmail, adminPass);
+            toast.success('Akun Admin Diaktifkan', {
+              description: 'Akun administrator baru berhasil dibuat dan masuk.'
+            });
+            navigate('/admin/dashboard');
+          } catch (createErr: any) {
+            console.error("Create error:", createErr);
+            if (createErr.code === 'auth/operation-not-allowed') {
+              setError('Metode login Email/Password belum diaktifkan di Firebase Console.');
+            } else if (createErr.code === 'auth/email-already-in-use') {
+              // This is weird if we just failed sign-in with it, but maybe password was wrong?
+              setError('Password salah untuk akun admin.');
+            } else {
+              setError(`Gagal akses: ${createErr.message}`);
+            }
+          }
+        } else if (err.code === 'auth/operation-not-allowed') {
+          setError('Metode login Email/Password belum diaktifkan di Firebase Console.');
+        } else {
+          setError(`Error: ${err.message}`);
         }
       } finally {
         setIsLoading(false);
       }
     } else {
       setError('Username atau password salah.');
-      toast.error('Login Gagal');
+      toast.error('Login Gagal', {
+        description: 'Kredensial tidak valid.'
+      });
       setIsLoading(false);
     }
   };

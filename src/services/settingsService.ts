@@ -1,40 +1,48 @@
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  serverTimestamp 
-} from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AppSettings } from '../types';
-
-const COLLECTION_NAME = 'settings';
-const DOC_ID = 'app-config';
+import { googleSheetsService } from './googleSheetsService';
 
 export const settingsService = {
   async getSettings(): Promise<AppSettings | null> {
     try {
-      const docRef = doc(db, COLLECTION_NAME, DOC_ID);
-      const docSnap = await getDoc(docRef);
+      let values = await googleSheetsService.getValues('Settings!A2:B');
       
-      if (docSnap.exists()) {
-        return docSnap.data() as AppSettings;
+      // Fallback for public
+      if (!values) {
+        const id = await googleSheetsService.getSpreadsheetId();
+        if (id) {
+          values = await googleSheetsService.getPublicValues(id, 'Settings');
+          if (values && values[0][0] === 'Key') values = values.slice(1);
+        }
       }
-      return null;
+
+      if (!values) return null;
+
+      const settings: any = {};
+      values.forEach(row => {
+        if (!row[0]) return;
+        const key = row[0];
+        let value = row[1];
+        
+        // Type conversion
+        if (value === 'true') value = true;
+        if (value === 'false') value = false;
+        
+        settings[key] = value;
+      });
+
+      return settings as AppSettings;
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `${COLLECTION_NAME}/${DOC_ID}`);
+      console.error('Error fetching settings:', error);
       return null;
     }
   },
 
   async updateSettings(settings: AppSettings): Promise<void> {
     try {
-      const docRef = doc(db, COLLECTION_NAME, DOC_ID);
-      await setDoc(docRef, {
-        ...settings,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      const rows = Object.entries(settings).map(([key, value]) => [key, String(value)]);
+      await googleSheetsService.updateRange(null, 'Settings!A2:B', rows);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `${COLLECTION_NAME}/${DOC_ID}`);
+      console.error('Error updating settings:', error);
     }
   }
 };

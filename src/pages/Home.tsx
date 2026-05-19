@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GraduationCap, Search, CheckCircle2, ShieldCheck, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import Countdown from '@/components/Countdown';
+import { Countdown } from '@/components/Countdown';
 import { motion } from 'motion/react';
 import { settingsService } from '@/services/settingsService';
 import { AppSettings } from '@/types';
@@ -45,8 +45,13 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="flex justify-center mb-6"
+            className="flex flex-col items-center mb-6"
           >
+            {settings?.logoUrl ? (
+              <img src={settings.logoUrl} alt="Logo Sekolah" className="h-24 w-24 object-contain mb-4 drop-shadow-xl" />
+            ) : (
+              <GraduationCap className="h-16 w-16 text-primary mb-4" />
+            )}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest border border-primary/20">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
@@ -86,7 +91,7 @@ export default function Home() {
               className="mb-16"
             >
               <div className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Waktu Pengumuman Tersisa:</div>
-              <Countdown targetDate={settings.announcementDate} />
+              <Countdown date={settings.announcementDate} />
             </motion.div>
           )}
 

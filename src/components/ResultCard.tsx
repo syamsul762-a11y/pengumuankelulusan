@@ -11,11 +11,12 @@ import { cn } from '@/lib/utils';
 
 interface ResultCardProps {
   student: Student;
+  logoUrl?: string;
   onDownload: () => void;
   onPrint: () => void;
 }
 
-export default function ResultCard({ student, onDownload, onPrint }: ResultCardProps) {
+export default function ResultCard({ student, logoUrl, onDownload, onPrint }: ResultCardProps) {
   const isLulus = student.status === 'LULUS';
 
   useEffect(() => {
@@ -55,8 +56,10 @@ export default function ResultCard({ student, onDownload, onPrint }: ResultCardP
         )} />
         
         <CardHeader className="text-center pb-2">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-            {isLulus ? (
+          <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-xl overflow-hidden bg-white border shadow-sm p-2">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo Sekolah" className="h-full w-full object-contain" />
+            ) : isLulus ? (
               <CheckCircle2 className="h-12 w-12 text-green-500" />
             ) : (
               <XCircle className="h-12 w-12 text-red-500" />

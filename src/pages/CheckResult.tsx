@@ -70,10 +70,20 @@ export default function CheckResult() {
     const schoolName = settings?.schoolName || 'SMA NEGERI INDONESIA';
     const prinName = settings?.principalName || 'Drs. H. Mulyadi, M.Pd.';
     const prinNip = settings?.principalNip || '197205121998031002';
+    const logoUrl = settings?.logoUrl;
 
     // Background Header
     doc.setFillColor(72, 100, 255);
     doc.rect(0, 0, 210, 40, 'F');
+
+    // School Logo if exists
+    if (logoUrl) {
+      try {
+        doc.addImage(logoUrl, 'PNG', 10, 5, 25, 25);
+      } catch (e) {
+        console.warn('Could not add logo to PDF:', e);
+      }
+    }
 
     // School Header
     doc.setTextColor(255, 255, 255);
@@ -219,6 +229,7 @@ export default function CheckResult() {
         {result && (
           <ResultCard 
             student={result} 
+            logoUrl={settings?.logoUrl}
             onDownload={() => generatePDF(result)} 
             onPrint={() => window.print()} 
           />

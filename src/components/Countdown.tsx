@@ -1,61 +1,57 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 
 interface CountdownProps {
-  targetDate: string;
+  date: string;
 }
 
-export default function Countdown({ targetDate }: CountdownProps) {
-  const [timeLeft, setTimeLeft] = useState({
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-    isExpired: false
-  });
+export const Countdown: React.FC<CountdownProps> = ({ date }) => {
+  const [timeLeft, setTimeLeft] = useState<{
+    days: number;
+    hours: number;
+    minutes: number;
+    seconds: number;
+  } | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
+      const targetDate = new Date(date).getTime();
       const now = new Date().getTime();
-      const distance = new Date(targetDate).getTime() - now;
+      const difference = targetDate - now;
 
-      if (distance < 0) {
+      if (difference <= 0) {
+        setTimeLeft(null);
         clearInterval(timer);
-        setTimeLeft(prev => ({ ...prev, isExpired: true }));
       } else {
         setTimeLeft({
-          days: Math.floor(distance / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-          minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
-          seconds: Math.floor((distance % (1000 * 60)) / 1000),
-          isExpired: false
+          days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+          minutes: Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60)),
+          seconds: Math.floor((difference % (1000 * 60)) / 1000),
         });
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [targetDate]);
+  }, [date]);
 
-  if (timeLeft.isExpired) {
-    return (
-      <div className="text-center p-6 bg-primary/10 rounded-2xl border border-primary/20">
-        <h2 className="text-2xl font-bold text-primary animate-pulse">PENGUMUMAN TELAH DIBUKA!</h2>
-      </div>
-    );
-  }
+  if (!timeLeft) return null;
 
   return (
-    <div className="grid grid-cols-4 gap-2 md:gap-4 max-w-2xl mx-auto">
-      {[
-        { label: 'Hari', value: timeLeft.days },
-        { label: 'Jam', value: timeLeft.hours },
-        { label: 'Menit', value: timeLeft.minutes },
-        { label: 'Detik', value: timeLeft.seconds }
-      ].map((item) => (
-        <div key={item.label} className="flex flex-col items-center justify-center p-3 md:p-6 bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-border">
-          <span className="text-xl md:text-4xl font-bold tracking-tighter text-primary">{item.value.toString().padStart(2, '0')}</span>
-          <span className="text-[10px] md:text-xs uppercase tracking-widest text-muted-foreground font-medium mt-1">{item.label}</span>
-        </div>
+    <div className="flex gap-4 justify-center py-4">
+      {Object.entries(timeLeft).map(([unit, value]) => (
+        <motion.div 
+          key={unit}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="flex flex-col items-center"
+        >
+          <div className="bg-primary/10 text-primary rounded-xl w-16 h-16 flex items-center justify-center text-2xl font-black border border-primary/20">
+            {value.toString().padStart(2, '0')}
+          </div>
+          <span className="text-[10px] uppercase font-bold text-muted-foreground mt-1">{unit}</span>
+        </motion.div>
       ))}
     </div>
   );
-}
+};

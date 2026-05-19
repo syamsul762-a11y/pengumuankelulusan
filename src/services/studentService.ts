@@ -1,89 +1,152 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where,
-  serverTimestamp,
-  orderBy
-} from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Student } from '../types';
-
-const COLLECTION_NAME = 'students';
+import { googleSheetsService } from './googleSheetsService';
 
 export const studentService = {
   async getByNisn(nisn: string): Promise<Student | null> {
     try {
-      const docRef = doc(db, COLLECTION_NAME, nisn);
-      const docSnap = await getDoc(docRef);
+      let values = await googleSheetsService.getValues('Students!A2:H');
       
-      if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as Student;
+      // Fallback for public access if no token
+      if (!values) {
+        const id = await googleSheetsService.getSpreadsheetId();
+        if (id) {
+          values = await googleSheetsService.getPublicValues(id, 'Students');
+          // Gviz returns headers in row 0 sometimes depending on the query, 
+          // but our getPublicValues tries to map it.
+          // Adjust if index 0 is NISN
+          if (values && values[0][0] === 'NISN') values = values.slice(1);
+        }
+      }
+
+      if (!values) return null;
+
+      const row = values.find(r => r[0] === nisn);
+      if (row) {
+        return this._mapRowToStudent(row);
       }
       return null;
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `${COLLECTION_NAME}/${nisn}`);
+      console.error('Error fetching student by NISN:', error);
       return null;
     }
   },
 
   async getAll(): Promise<Student[]> {
     try {
-      const q = query(collection(db, COLLECTION_NAME), orderBy('name', 'asc'));
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+      let values = await googleSheetsService.getValues('Students!A2:H');
+      
+      // Fallback for public
+      if (!values) {
+        const id = await googleSheetsService.getSpreadsheetId();
+        if (id) {
+          values = await googleSheetsService.getPublicValues(id, 'Students');
+          if (values && values[0][0] === 'NISN') values = values.slice(1);
+        }
+      }
+
+      if (!values) return [];
+      return values.map(row => this._mapRowToStudent(row));
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, COLLECTION_NAME);
+      console.error('Error fetching all students:', error);
       return [];
     }
   },
 
   async upsertStudent(student: Student): Promise<void> {
     try {
-      const docRef = doc(db, COLLECTION_NAME, student.nisn);
-      const data = {
-        ...student,
-        updatedAt: serverTimestamp(),
-      };
-      
-      // Remove id if it exists in the data object to avoid duplicating it
-      if ('id' in data) delete (data as any).id;
-      
-      // If it's a new student, add createdAt
-      const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
-        (data as any).createdAt = serverTimestamp();
-      }
+      const id = await googleSheetsService.getSpreadsheetId();
+      if (!id) throw new Error('Spreadsheet ID not found');
 
-      await setDoc(docRef, data, { merge: true });
+      const values = await googleSheetsService.getValues('Students!A2:A');
+      const nisnList = values?.map(r => String(r[0])) || [];
+      const index = nisnList.indexOf(String(student.nisn));
+
+      const rowData = [
+        student.nisn,
+        student.name,
+        student.class,
+        student.birthInfo || '',
+        student.status,
+        student.averageScore || '',
+        student.message || '',
+        student.keterangan || '',
+        student.bantuanProgram || '',
+        student.linkBerkas || '',
+        new Date().toISOString()
+      ];
+
+      if (index !== -1) {
+        // Update existing row (index is 0-based from row 2, so A(index+2))
+        await googleSheetsService.updateRange(id, `Students!A${index + 2}:K${index + 2}`, [rowData]);
+      } else {
+        // Append new row
+        await googleSheetsService.appendValues('Students!A2', [rowData]);
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `${COLLECTION_NAME}/${student.nisn}`);
+      console.error('Error upserting student:', error);
+      throw error; // Re-throw so UI can handle it
     }
   },
 
   async deleteStudent(nisn: string): Promise<void> {
     try {
-      await deleteDoc(doc(db, COLLECTION_NAME, nisn));
+      const values = await googleSheetsService.getValues('Students!A2:K');
+      if (!values) return;
+
+      const filtered = values.filter(row => String(row[0]) !== String(nisn));
+      const id = await googleSheetsService.getSpreadsheetId();
+      if (id) {
+        // Clear entire range first
+        await googleSheetsService.updateRange(id, 'Students!A2:K1000', Array(values.length).fill(Array(11).fill('')));
+        // Write back filtered
+        if (filtered.length > 0) {
+          await googleSheetsService.updateRange(id, 'Students!A2', filtered);
+        }
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `${COLLECTION_NAME}/${nisn}`);
+      console.error('Error deleting student:', error);
+      throw error;
     }
   },
 
   async importStudents(students: Student[]): Promise<number> {
     let successCount = 0;
-    for (const student of students) {
-      try {
-        await this.upsertStudent(student);
-        successCount++;
-      } catch (error) {
-        console.error(`Failed to import student ${student.nisn}:`, error);
-      }
+    const rows = students.map(student => [
+      student.nisn,
+      student.name,
+      student.class,
+      student.birthInfo || '',
+      student.status,
+      student.averageScore || '',
+      student.message || '',
+      student.keterangan || '',
+      student.bantuanProgram || '',
+      student.linkBerkas || '',
+      new Date().toISOString()
+    ]);
+
+    try {
+      await googleSheetsService.appendValues('Students!A2', rows);
+      successCount = students.length;
+    } catch (error) {
+      console.error('Error importing students:', error);
     }
     return successCount;
+  },
+
+  _mapRowToStudent(row: any[]): Student {
+    return {
+      nisn: String(row[0] || ''),
+      name: String(row[1] || ''),
+      class: String(row[2] || ''),
+      birthInfo: String(row[3] || ''),
+      status: row[4] === 'LULUS' ? 'LULUS' : 'TIDAK LULUS',
+      averageScore: row[5] ? parseFloat(row[5]) : undefined,
+      message: String(row[6] || ''),
+      keterangan: String(row[7] || ''),
+      bantuanProgram: String(row[8] || ''),
+      linkBerkas: String(row[9] || ''),
+      updatedAt: String(row[10] || '')
+    };
   }
 };
