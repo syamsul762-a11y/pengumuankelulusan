@@ -64,7 +64,7 @@ export default function Dashboard() {
   // Auth check and initial data fetch
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user || user.email !== "syamsul762@guru.sd.belajar.id") {
+      if (!user || (user.email !== "syamsul762@guru.sd.belajar.id" && user.email !== "admin@siks.com")) {
         navigate('/login');
         return;
       }

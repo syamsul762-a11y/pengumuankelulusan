@@ -12,7 +12,7 @@ export default function Navbar() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && user.email === "syamsul762@guru.sd.belajar.id") {
+      if (user && (user.email === "syamsul762@guru.sd.belajar.id" || user.email === "admin@siks.com")) {
         setUser(user);
       } else {
         setUser(null);
