@@ -27,10 +27,7 @@ export default function Login() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user && (user.email === "syamsul762@guru.sd.belajar.id" || user.email === "admin@siks.com")) {
-        // Only auto-redirect if we have the access token needed for Sheets
-        if (getAccessToken()) {
-          navigate('/admin/dashboard');
-        }
+        navigate('/admin/dashboard');
       }
     });
     return () => unsubscribe();
@@ -102,18 +99,10 @@ export default function Login() {
     if (username === 'admin' && password === 'admin123') {
       try {
         await signInWithEmailAndPassword(auth, adminEmail, adminPass);
-        
-        // CHECK TOKEN - Manual login doesn't provide Google Access Token
-        if (!getAccessToken()) {
-           toast.warning('Login Berhasil, tapi butuh Izin Spreadsheet', {
-             description: 'Klik "Google Account" untuk mengaktifkan sinkronisasi Spreadsheet.',
-             duration: 6000
-           });
-           // Switch to google tab automatically or just wait
-        } else {
-           toast.success('Login Berhasil');
-           navigate('/admin/dashboard');
-        }
+        toast.success('Login Berhasil', {
+          description: 'Selamat datang, Administrator'
+        });
+        navigate('/admin/dashboard');
       } catch (err: any) {
         // ... previous error handling ...
         console.log("Login error code:", err.code);

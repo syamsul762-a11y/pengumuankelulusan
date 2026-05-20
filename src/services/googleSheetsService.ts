@@ -117,13 +117,14 @@ export const googleSheetsService = {
 
       // Initialize Settings
       await this.updateRange(id, 'Settings!A1:B1', [['Key', 'Value']]);
-      await this.updateRange(id, 'Settings!A2:B7', [
+      await this.updateRange(id, 'Settings!A2:B8', [
         ['schoolName', 'SMA NEGERI INDONESIA'],
         ['announcementDate', '2026-06-15T10:00'],
         ['isLive', 'true'],
         ['logoUrl', ''],
         ['principalName', 'Drs. H. Mulyadi, M.Pd.'],
-        ['principalNip', '197205121998031002']
+        ['principalNip', '197205121998031002'],
+        ['showCountdown', 'true']
       ]);
 
       return id;

@@ -21,4 +21,5 @@ export interface AppSettings {
   logoUrl?: string;
   principalName: string;
   principalNip: string;
+  showCountdown: boolean;
 }

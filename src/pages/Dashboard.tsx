@@ -46,7 +46,7 @@ import { studentService } from '@/services/studentService';
 import { settingsService } from '@/services/settingsService';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { initAuth, logout, getAccessToken } from '@/lib/googleAuth';
+import { logout, getAccessToken, googleSignIn } from '@/lib/googleAuth';
 import { googleSheetsService } from '@/services/googleSheetsService';
 import { Countdown } from '@/components/Countdown';
 import { toast } from 'sonner';
@@ -70,48 +70,62 @@ export default function Dashboard() {
 
   // Auth check and initial data fetch
   useEffect(() => {
-    // We use initAuth to handle token persistence in-memory
-    const unsubscribe = initAuth(
-      async (user, token) => {
-        if (user.email !== "syamsul762@guru.sd.belajar.id" && user.email !== "admin@siks.com") {
-          navigate('/login');
-          return;
-        }
-
-        try {
-          const id = await googleSheetsService.getSpreadsheetId();
-          setSpreadsheetId(id);
-
-          const [fetchedStudents, fetchedSettings] = await Promise.all([
-            studentService.getAll(),
-            settingsService.getSettings()
-          ]);
-          setStudents(fetchedStudents);
-          if (fetchedSettings) setSettings(fetchedSettings);
-        } catch (error) {
-          console.error(error);
-          toast.error('Gagal mengambil data dari Spreadsheet');
-        } finally {
-          setIsLoading(false);
-        }
-      },
-      () => {
-        // If auth fails or no token, double check with firebase auth
-        onAuthStateChanged(auth, (user) => {
-          if (!user) {
-            navigate('/login');
-          } else if (!getAccessToken()) {
-            // User is logged in but we lost the access token (refresh)
-            // Redirect to login to re-auth with Google scopes
-            toast.info('Sesi Google Sheets kedaluwarsa, silakan login kembali.');
-            navigate('/login');
-          }
-        });
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        navigate('/login');
+        return;
       }
-    );
+
+      if (user.email !== "syamsul762@guru.sd.belajar.id" && user.email !== "admin@siks.com") {
+        await auth.signOut();
+        navigate('/login');
+        return;
+      }
+
+      try {
+        const id = await googleSheetsService.getSpreadsheetId();
+        setSpreadsheetId(id);
+
+        const [fetchedStudents, fetchedSettings] = await Promise.all([
+          studentService.getAll(),
+          settingsService.getSettings()
+        ]);
+        setStudents(fetchedStudents);
+        if (fetchedSettings) setSettings(fetchedSettings);
+      } catch (error) {
+        console.error(error);
+        toast.error('Gagal mengambil data. Silakan hubungkan akun Google Anda untuk performa penuh.');
+      } finally {
+        setIsLoading(false);
+      }
+    });
 
     return () => unsubscribe();
   }, [navigate]);
+
+  const ensureGoogleToken = async (): Promise<boolean> => {
+    if (getAccessToken()) return true;
+    
+    try {
+      toast.info('Menghubungkan akun Google Anda untuk izin menyimpan data...');
+      const result = await googleSignIn();
+      if (result?.accessToken) {
+        toast.success('Berhasil terhubung dengan Google Sheets!');
+        const id = await googleSheetsService.getSpreadsheetId();
+        setSpreadsheetId(id);
+        const [fetchedStudents, fetchedSettings] = await Promise.all([
+          studentService.getAll(),
+          settingsService.getSettings()
+        ]);
+        setStudents(fetchedStudents);
+        if (fetchedSettings) setSettings(fetchedSettings);
+        return true;
+      }
+    } catch (err: any) {
+      toast.error('Gagal menghubungkan Google Account: ' + err.message);
+    }
+    return false;
+  };
 
   const handleLogout = async () => {
     try {
@@ -129,9 +143,20 @@ export default function Dashboard() {
       return;
     }
     
+    if (!(await ensureGoogleToken())) return;
+
     setIsActionLoading(true);
     try {
-      await studentService.upsertStudent(newStudent as Student);
+      const calculatedStatus = newStudent.status || (newStudent.averageScore !== undefined && newStudent.averageScore >= 75 ? 'LULUS' : 'TIDAK LULUS');
+      const studentToSave: Student = {
+        ...newStudent,
+        class: newStudent.class || 'XII',
+        status: calculatedStatus,
+        birthInfo: newStudent.birthInfo || '',
+        averageScore: newStudent.averageScore !== undefined ? newStudent.averageScore : 0
+      } as Student;
+
+      await studentService.upsertStudent(studentToSave);
       const updatedStudents = await studentService.getAll();
       setStudents(updatedStudents);
       setIsAddOpen(false);
@@ -195,6 +220,7 @@ export default function Dashboard() {
 
   const handleDelete = async (nisn: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus data siswa ini?')) {
+      if (!(await ensureGoogleToken())) return;
       try {
         await studentService.deleteStudent(nisn);
         setStudents(students.filter(s => s.nisn !== nisn));
@@ -208,6 +234,7 @@ export default function Dashboard() {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!(await ensureGoogleToken())) return;
       Papa.parse(file, {
         header: true,
         complete: async (results) => {
@@ -243,6 +270,7 @@ export default function Dashboard() {
   };
 
   const handleSaveSettings = async () => {
+    if (!(await ensureGoogleToken())) return;
     setIsActionLoading(true);
     try {
       await settingsService.updateSettings(settings);
@@ -459,55 +487,36 @@ export default function Dashboard() {
                   <form onSubmit={handleAddStudent} className="space-y-6 py-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                        <div className="space-y-2">
+                         <Label>Nama Siswa</Label>
+                         <Input 
+                            required 
+                            placeholder="Nama Lengkap Siswa"
+                            value={newStudent.name || ''}
+                            onChange={e => setNewStudent({...newStudent, name: e.target.value})}
+                          />
+                       </div>
+                       <div className="space-y-2">
                          <Label>NISN</Label>
                          <Input 
                             required 
                             placeholder="Contoh: 1234567890" 
                             value={newStudent.nisn || ''}
                             onChange={e => setNewStudent({...newStudent, nisn: e.target.value})}
-                         />
-                       </div>
-                       <div className="space-y-2">
-                         <Label>Nama Lengkap</Label>
-                         <Input 
-                            required 
-                            placeholder="Nama Lengkap"
-                            value={newStudent.name || ''}
-                            onChange={e => setNewStudent({...newStudent, name: e.target.value})}
-                          />
-                       </div>
-                       <div className="space-y-2">
-                         <Label>Kelas</Label>
-                         <Input 
-                            required 
-                            placeholder="Contoh: XII IPA 1"
-                            value={newStudent.class || ''}
-                            onChange={e => setNewStudent({...newStudent, class: e.target.value})}
                           />
                        </div>
                        <div className="space-y-2">
                          <Label>Tempat, Tanggal Lahir</Label>
                          <Input 
                             required 
-                            placeholder="Contoh: Jakarta, 12-05-2008"
+                            placeholder="Contoh: Jakarta, 12 Mei 2008"
                             value={newStudent.birthInfo || ''}
                             onChange={e => setNewStudent({...newStudent, birthInfo: e.target.value})}
                           />
                        </div>
                        <div className="space-y-2">
-                         <Label>Status Kelulusan</Label>
-                         <select 
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                            value={newStudent.status}
-                            onChange={e => setNewStudent({...newStudent, status: e.target.value as any})}
-                         >
-                           <option value="LULUS">LULUS</option>
-                           <option value="TIDAK LULUS">TIDAK LULUS</option>
-                         </select>
-                       </div>
-                       <div className="space-y-2">
                          <Label>Nilai Rata-rata</Label>
                          <Input 
+                            required
                             type="number" 
                             step="0.01" 
                             placeholder="Contoh: 85.50"
@@ -515,38 +524,6 @@ export default function Dashboard() {
                             onChange={e => setNewStudent({...newStudent, averageScore: parseFloat(e.target.value)})}
                           />
                        </div>
-                       <div className="space-y-2">
-                         <Label>Program Bantuan</Label>
-                         <Input 
-                            placeholder="Contoh: PIP / KIP"
-                            value={newStudent.bantuanProgram || ''}
-                            onChange={e => setNewStudent({...newStudent, bantuanProgram: e.target.value})}
-                          />
-                       </div>
-                       <div className="space-y-2">
-                         <Label>Link/Folder Berkas</Label>
-                         <Input 
-                            placeholder="URL Google Drive"
-                            value={newStudent.linkBerkas || ''}
-                            onChange={e => setNewStudent({...newStudent, linkBerkas: e.target.value})}
-                          />
-                       </div>
-                       <div className="space-y-2 md:col-span-2">
-                         <Label>Keterangan Tambahan</Label>
-                         <Input 
-                            placeholder="Contoh: Siswa Berprestasi"
-                            value={newStudent.keterangan || ''}
-                            onChange={e => setNewStudent({...newStudent, keterangan: e.target.value})}
-                          />
-                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Pesan Khusus</Label>
-                      <Input 
-                        placeholder="Pesan untuk siswa..."
-                        value={newStudent.message || ''}
-                        onChange={e => setNewStudent({...newStudent, message: e.target.value})}
-                      />
                     </div>
                     <DialogFooter>
                       <Button type="submit" className="w-full" disabled={isActionLoading}>
@@ -687,6 +664,16 @@ export default function Dashboard() {
                     className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                   />
                   <Label htmlFor="isLive">Aktifkan Pengumuman (Publik)</Label>
+               </div>
+               <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="showCountdown" 
+                    checked={settings.showCountdown !== false} 
+                    onChange={e => setSettings({...settings, showCountdown: e.target.checked})}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <Label htmlFor="showCountdown">Tampilkan Hitung Mundur di Beranda Depan</Label>
                </div>
                <div className="flex justify-end">
                  <Button className="gap-2" onClick={handleSaveSettings} disabled={isActionLoading}>

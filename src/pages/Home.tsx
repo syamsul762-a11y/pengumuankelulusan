@@ -83,7 +83,7 @@ export default function Home() {
               : 'Hasil kelulusan akan diumumkan sesuai dengan waktu yang telah ditentukan.'}
           </motion.p>
 
-          {!isReleased && settings?.announcementDate && (
+          {!isReleased && settings?.announcementDate && settings?.showCountdown !== false && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
